@@ -1,3 +1,3 @@
-module github.com/zeyuanDADA/zinx/v3
+module github.com/zeyuanDADA/zinx
 
 go 1.16
