@@ -17,53 +17,48 @@ type Server struct {
 	IP string
 	// 服务器监听的端口
 	Port int
+	// 当前的server添加一个router,server注册的链接对应的处理业务
+	Router ziface.IRouter
 }
 
 // Start 启动服务器
 func (s *Server) Start() {
 	fmt.Printf("[Start] Server Listenner at IP: %s, Port: %d\n", s.IP, s.Port)
-	// 1 获取一个TCP的Addr
-	addr, err := net.ResolveTCPAddr(s.IPVersion, fmt.Sprintf("%s:%d", s.IP, s.Port))
-	if err != nil {
-		fmt.Printf("resolve tcp addr error: %v\n", err)
-		return
-	}
-
-	// 2 监听服务器的地址
-	listenner, err := net.ListenTCP(s.IPVersion, addr)
-	if err != nil {
-		fmt.Printf("listen %s err: %v\n", s.IPVersion, err)
-		return
-	}
-	fmt.Printf("start Zinx server %s succ, listenning...\n", s.Name)
-	// 3 阻塞的等待客户端连接，处理客户端连接业务（读写）
-	for {
-		// 如果有客户端连接过来，阻塞会返回
-		conn, err := listenner.AcceptTCP()
+	go func ()  {
+		// 1 获取一个TCP的Addr
+		addr, err := net.ResolveTCPAddr(s.IPVersion, fmt.Sprintf("%s:%d", s.IP, s.Port))
 		if err != nil {
-			fmt.Println("Accept error", err)
-			continue
+			fmt.Printf("resolve tcp addr error: %v\n", err)
+			return
 		}
 
-		// 已经与客户端连接了，做一些业务，做一个最基本的最大512字节长度的回显任务
-		go func() {
-			for {
-				buf := make([]byte, 512)
-				cnt, err := conn.Read(buf)
-				if err != nil {
-					fmt.Println("recv buf err", err)
-					continue
-				}
+		// 2 监听服务器的地址
+		listenner, err := net.ListenTCP(s.IPVersion, addr)
+		if err != nil {
+			fmt.Printf("listen %s err: %v\n", s.IPVersion, err)
+			return
+		}
+		fmt.Printf("start Zinx server %s succ, listenning...\n", s.Name)
 
-				// 回显功能
-				if _, err := conn.Write(buf[:cnt]); err != nil {
-					fmt.Println("write back buf err", err)
-					continue
-				}
+		var cid uint32 = 0
+
+		// 3 阻塞的等待客户端连接，处理客户端连接业务（读写）
+		for {
+			// 如果有客户端连接过来，阻塞会返回
+			conn, err := listenner.AcceptTCP()
+			if err != nil {
+				fmt.Println("Accept error", err)
+				continue
 			}
-		}()
-	}
 
+			// 将处理新链接的业务方法和conn进行绑定 得到我们的链接模块
+			dealConn := NewConnection(conn, cid, s.Router)
+			cid++
+
+			// 启动当前的链接业务处理
+			go dealConn.Start()
+		}
+	}()
 }
 
 // Stop 停止服务器
@@ -82,6 +77,12 @@ func (s *Server) Serve() {
 	select{}
 }
 
+// 注册路由
+func (s *Server) AddRouter(router ziface.IRouter) {
+	s.Router = router
+	fmt.Println("Add Router Succ!!")
+}
+
 // 初始化Server模块
 func NewServer(name string) ziface.IServer {
 	s := &Server{
@@ -89,6 +90,7 @@ func NewServer(name string) ziface.IServer {
 		IPVersion: "tcp4",
 		IP: "0.0.0.0",
 		Port: 8999,
+		Router: nil,
 	}
 
 	return s
